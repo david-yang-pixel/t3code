@@ -1,0 +1,93 @@
+name: Hosted workspace macOS preview
+
+on:
+  push:
+    branches: [hosted-macos-preview]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.repository == 'david-yang-pixel/t3code'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            arch: arm64
+            rust-target: aarch64-apple-darwin
+          - runner: macos-26-intel
+            arch: x64
+            rust-target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    env:
+      T3CODE_TELEMETRY_CHANNEL: dev
+    steps:
+      - name: Check out the build commit
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          git init .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git checkout --detach FETCH_HEAD
+
+      - name: Set up workspace dependencies
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=@t3tools/desktop... --filter=@t3tools/web... --filter=t3... --filter=@t3tools/scripts...
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          targets: ${{ matrix.rust-target }}
+
+      - name: Build the preview DMG
+        env:
+          DESKTOP_ARCH: ${{ matrix.arch }}
+        run: |
+          base_version=$(node -p "require('./apps/desktop/package.json').version")
+          node scripts/build-desktop-artifact.ts --platform mac --target dmg --arch "$DESKTOP_ARCH" \
+            --version "$base_version-pr.1.$GITHUB_RUN_NUMBER" --output-dir release --verbose
+
+      - name: Verify the DMG and its packaged backend
+        env:
+          DESKTOP_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          dmg=(release/Yang-Workspace-*-$DESKTOP_ARCH.dmg)
+          test "${#dmg[@]}" = 1
+          hdiutil verify "${dmg[0]}"
+          mountpoint=$(mktemp -d)
+          trap 'hdiutil detach "$mountpoint" -quiet || true; rmdir "$mountpoint"' EXIT
+          hdiutil attach "${dmg[0]}" -readonly -nobrowse -mountpoint "$mountpoint" -quiet
+          contents="$mountpoint/Yang Workspace (Beta).app/Contents"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$contents/Info.plist")" = com.davidyang.workspace
+          executable=$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$contents/Info.plist")
+          expected_arch=$DESKTOP_ARCH
+          if [[ $expected_arch == x64 ]]; then expected_arch=x86_64; fi
+          test "$(lipo -archs "$contents/MacOS/$executable")" = "$expected_arch"
+          test ! -e "$contents/Resources/app-update.yml"
+          ELECTRON_RUN_AS_NODE=1 "$contents/MacOS/$executable" "$contents/Resources/app.asar/apps/server/dist/bin.mjs" --version
+          node scripts/smoke-desktop-app.ts --executable "$contents/MacOS/$executable" \
+            --artifacts-dir "$RUNNER_TEMP/desktop-launch-check"
+
+      - name: Upload launch diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hosted-preview-diagnostics-${{ matrix.arch }}
+          path: ${{ runner.temp }}/desktop-launch-check
+          if-no-files-found: ignore
+
+      - name: Upload the verified DMG
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hosted-preview-macos-${{ matrix.arch }}
+          path: release/Yang-Workspace-*-${{ matrix.arch }}.dmg
+          if-no-files-found: error
+          retention-days: 7
