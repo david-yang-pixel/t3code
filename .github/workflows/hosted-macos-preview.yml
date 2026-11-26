@@ -69,7 +69,7 @@ jobs:
           mountpoint=$(mktemp -d)
           trap 'hdiutil detach "$mountpoint" -force -quiet || true' EXIT
           hdiutil attach "${dmg[0]}" -readonly -nobrowse -mountpoint "$mountpoint" -quiet
-          contents="$mountpoint/Yang Workspace (Beta).app/Contents"
+          contents="$mountpoint/t3code-pr.1.app/Contents"
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$contents/Info.plist")" = com.davidyang.workspace
           executable=$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$contents/Info.plist")
           expected_arch=$DESKTOP_ARCH
@@ -125,7 +125,7 @@ jobs:
           sha256sum "${arm64[0]}" "${x64[0]}" > SHA256SUMS.txt
 
           cat > NOTES.md <<'NOTES'
-          Yang Workspace 是基于 T3 Code 源码构建的非官方 macOS 预览版。
+          Yang Workspace 是基于 T3 Code 源码构建的非官方 macOS 预览版。安装后的应用名为 `t3code-pr.1`，对应此 fork 的 PR #1。
 
           - Apple Silicon Mac 下载以 `arm64.dmg` 结尾的文件。Intel Mac 下载以 `x64.dmg` 结尾的文件。
           - 应用使用独立的 `~/.yang-workspace` 数据目录，首次打开需要重新配置远程环境。这个版本没有 Apple Developer ID 签名或公证。

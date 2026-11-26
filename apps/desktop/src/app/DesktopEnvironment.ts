@@ -11,6 +11,8 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
+import desktopPackageJson from "../../package.json" with { type: "json" };
+
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopConfig from "./DesktopConfig.ts";
 import { resolveLinuxDesktopEntryName } from "./DesktopEarlyElectronStartup.ts";
@@ -104,6 +106,10 @@ export function resolveDesktopAppBranding(input: {
   readonly appVersion: string;
 }): DesktopAppBranding {
   const stageLabel = resolveDesktopAppStageLabel(input);
+  if (!input.isDevelopment && /-pr\.\d+\.\d+$/.test(input.appVersion)) {
+    const previewName = desktopPackageJson.productName;
+    return { baseName: previewName, displayName: previewName, stageLabel };
+  }
   return {
     baseName: APP_BASE_NAME,
     stageLabel,
