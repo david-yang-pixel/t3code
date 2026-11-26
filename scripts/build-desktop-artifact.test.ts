@@ -539,6 +539,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
 
       assert.isNull(preview.publish);
       assert.isNull(previewChannel.publish);
+      assert.deepInclude(preview.dmg, { artifactName: "t3code-${version}-${arch}.${ext}" });
       assert.deepStrictEqual(release.publish, [
         {
           provider: "github",

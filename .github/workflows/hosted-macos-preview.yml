@@ -60,7 +60,7 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          dmg=(release/Yang-Workspace-*-$DESKTOP_ARCH.dmg)
+          dmg=(release/t3code-*-$DESKTOP_ARCH.dmg)
           if [[ ${#dmg[@]} != 1 ]]; then
             echo "Expected one DMG for $DESKTOP_ARCH, found ${#dmg[@]}." >&2
             exit 1
@@ -92,7 +92,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hosted-preview-macos-${{ matrix.arch }}
-          path: release/Yang-Workspace-*-${{ matrix.arch }}.dmg
+          path: release/t3code-*-${{ matrix.arch }}.dmg
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -118,8 +118,8 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          arm64=(Yang-Workspace-*-arm64.dmg)
-          x64=(Yang-Workspace-*-x64.dmg)
+          arm64=(t3code-*-arm64.dmg)
+          x64=(t3code-*-x64.dmg)
           test "${#arm64[@]}" = 1
           test "${#x64[@]}" = 1
           sha256sum "${arm64[0]}" "${x64[0]}" > SHA256SUMS.txt
