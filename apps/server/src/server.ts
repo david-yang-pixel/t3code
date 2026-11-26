@@ -144,6 +144,7 @@ import * as T3ProjectFileLoader from "./project/T3ProjectFileLoader.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFolders from "./workspace/WorkspaceFolders.ts";
+import * as HostedWorkspace from "./workspace/HostedWorkspace.ts";
 import * as LayoutCommandApprovals from "./workspace/LayoutCommandApprovals.ts";
 import * as LayoutCommandApprovalWrites from "./workspace/LayoutCommandApprovalWrites.ts";
 import * as TaskFolders from "./workspace/TaskFolders.ts";
@@ -574,6 +575,7 @@ const layerWorkspaceFileSystem = WorkspaceFileSystem.layer.pipe(
 );
 
 const layerWorkspace = Layer.mergeAll(
+  HostedWorkspace.layer,
   WorkspacePaths.layer,
   layerWorkspaceEntries,
   layerWorkspaceFileSystem,

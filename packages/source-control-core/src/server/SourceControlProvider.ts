@@ -8,6 +8,8 @@ import type {
   SourceControlProviderError,
   SourceControlProviderInfo,
   SourceControlProviderKind,
+  SourceControlOwnRepositoriesPage,
+  SourceControlListOwnRepositoriesInput,
   SourceControlRepositoryCloneUrls,
   SourceControlRepositoryVisibility,
 } from "@t3tools/contracts";
@@ -228,6 +230,9 @@ export class SourceControlProvider extends Context.Service<
       /** The host the repository is on. Without it, the checkout's host. */
       readonly host?: string;
     }) => Effect.Effect<SourceControlRepositoryCloneUrls, SourceControlProviderError>;
+    readonly listOwnRepositories?: (
+      input: SourceControlListOwnRepositoriesInput & { readonly cwd: string },
+    ) => Effect.Effect<SourceControlOwnRepositoriesPage, SourceControlProviderError>;
     readonly createRepository: (input: {
       readonly cwd: string;
       readonly repository: string;

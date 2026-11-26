@@ -226,6 +226,7 @@ import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/Atta
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFolders from "./workspace/WorkspaceFolders.ts";
+import * as HostedWorkspace from "./workspace/HostedWorkspace.ts";
 import * as LayoutCommandApprovalWrites from "./workspace/LayoutCommandApprovalWrites.ts";
 import * as TaskFolders from "./workspace/TaskFolders.ts";
 import * as KnownWorkspaces from "./workspace/KnownWorkspaces.ts";
@@ -1599,6 +1600,7 @@ export const layerWsRpc = (
       const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
       const workspaceFolders = yield* WorkspaceFolders.WorkspaceFolders;
+      const hostedWorkspace = yield* HostedWorkspace.HostedWorkspace;
       const taskFolders = yield* TaskFolders.TaskFolders;
       const layoutCommandApprovalWrites =
         yield* LayoutCommandApprovalWrites.LayoutCommandApprovalWrites;
@@ -3026,6 +3028,8 @@ export const layerWsRpc = (
           withPullRequestViewer(input, pullRequests.setLabels(input)),
         [WS_METHODS.sourceControlLookupRepository]: (input) =>
           sourceControlRepositories.lookupRepository(input),
+        [WS_METHODS.sourceControlListOwnRepositories]: (input) =>
+          sourceControlRepositories.listOwnRepositories(input),
         [WS_METHODS.sourceControlCloneRepository]: (input) =>
           sourceControlRepositories.cloneRepository(input),
         [WS_METHODS.sourceControlSignInStart]: (input) => sourceControlSignIn.start(input),
@@ -3207,6 +3211,7 @@ export const layerWsRpc = (
             ),
           ),
         [WS_METHODS.workspaceListFolders]: (input) => workspaceFolders.list(input),
+        [WS_METHODS.workspaceHostedAction]: (input) => hostedWorkspace.act(input),
         [WS_METHODS.workspaceScanFolders]: (input) => workspaceFolders.scan(input),
         [WS_METHODS.workspaceTaskFolder]: (input) =>
           taskFolders.find(input.worktreePath).pipe(Effect.map((taskFolder) => ({ taskFolder }))),

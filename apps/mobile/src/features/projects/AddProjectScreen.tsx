@@ -61,6 +61,7 @@ import {
   ProjectId,
   resolveEnvironmentMachineKind,
   SourceControlProviderKind,
+  type SourceControlRepositoryInfo,
 } from "@t3tools/contracts";
 import {
   StackActions,
@@ -83,6 +84,7 @@ import { useProjects, useServerConfigs, waitForProject } from "../../state/entit
 import { filesystemEnvironment } from "../../state/filesystem";
 import { projectEnvironment } from "../../state/projects";
 import { useEnvironmentQuery } from "../../state/query";
+import { useDebouncedValue } from "../../state/queries";
 import { environmentSession, useEnvironmentScope, readEnvironmentScope } from "../../state/session";
 import { useEnvironmentPresentation } from "../../state/presentation";
 import { sourceControlEnvironment } from "../../state/sourceControl";
@@ -127,6 +129,7 @@ interface EnvironmentOption {
   readonly connectionErrorTraceId: string | null;
   readonly ghqCloneLayout: boolean;
   readonly offeredSourceControlProviders: OfferedSourceControlProviders | undefined;
+  readonly supportsOwnRepositories?: boolean;
 }
 
 const environmentOptionOrder = Order.mapInput(
@@ -474,6 +477,8 @@ function useEnvironmentOptions(
         connectionErrorTraceId: runtime?.connectionErrorTraceId ?? null,
         ghqCloneLayout: config?.settings.ghqCloneLayout === true,
         offeredSourceControlProviders: config?.settings.offeredSourceControlProviders,
+        supportsOwnRepositories:
+          config?.environment.capabilities.sourceControlOwnRepositories === true,
       };
     });
     return Arr.sort(
@@ -965,10 +970,47 @@ export function AddProjectRepositoryScreen(props: {
   const environment = useEnvironmentFromParam(props.environmentId);
   const source = sourceFromParam(props.source);
   const [repositoryInput, setRepositoryInput] = useState("");
+  const [repositoryPage, setRepositoryPage] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const gt = useGT();
   const messages = useMessages();
+  const canWriteSourceControl = useEnvironmentScope(
+    environment?.environmentId ?? null,
+    AuthSourceControlWriteScope,
+  );
+  const showOwnRepositories =
+    source === "github" && environment?.supportsOwnRepositories === true && canWriteSourceControl;
+  const repositoryQuery = repositoryInput.trim().slice(0, 200);
+  const debouncedRepositoryQuery = useDebouncedValue(
+    showOwnRepositories ? repositoryQuery : "",
+    300,
+  );
+  const ownRepositories = useEnvironmentQuery(
+    showOwnRepositories && repositoryQuery === debouncedRepositoryQuery
+      ? sourceControlEnvironment.ownRepositories({
+          environmentId: environment.environmentId,
+          input: {
+            provider: SourceControlProviderKind.make("github"),
+            page: repositoryPage,
+            query: debouncedRepositoryQuery,
+          },
+        })
+      : null,
+  );
+
+  const openRepositoryDestination = (repository: SourceControlRepositoryInfo) => {
+    if (!environment) return;
+    navigation.dispatch(
+      StackActions.push("AddProjectDestination", {
+        environmentId: environment.environmentId,
+        source,
+        remoteUrl: getDefaultCloneUrl(repository),
+        repositoryTitle: repository.nameWithOwner,
+        repositoryName: getCloneDirectoryName(repository.nameWithOwner),
+      }),
+    );
+  };
 
   const lookupRepository = async () => {
     if (!environment || repositoryInput.trim().length === 0 || isSubmitting) return;
@@ -1009,16 +1051,7 @@ export function AddProjectRepositoryScreen(props: {
     if (AsyncResult.isFailure(result)) {
       setError(errorMessage(Cause.squash(result.cause)));
     } else {
-      const repository = result.value;
-      navigation.dispatch(
-        StackActions.push("AddProjectDestination", {
-          environmentId: environment.environmentId,
-          source,
-          remoteUrl: getDefaultCloneUrl(repository),
-          repositoryTitle: repository.nameWithOwner,
-          repositoryName: getCloneDirectoryName(repository.nameWithOwner),
-        }),
-      );
+      openRepositoryDestination(result.value);
     }
     setIsSubmitting(false);
   };
@@ -1033,7 +1066,11 @@ export function AddProjectRepositoryScreen(props: {
           <TextInput
             className="h-12 min-h-12 rounded-[24px] px-4 py-0 text-base leading-snug"
             value={repositoryInput}
-            onChangeText={setRepositoryInput}
+            onChangeText={(text) => {
+              setRepositoryInput(text);
+              setRepositoryPage(1);
+              setError(null);
+            }}
             autoCapitalize="none"
             autoCorrect={false}
             placeholder={
@@ -1050,6 +1087,56 @@ export function AddProjectRepositoryScreen(props: {
             onPress={() => void lookupRepository()}
             loading={isSubmitting}
           />
+          {showOwnRepositories ? (
+            <View className="gap-2">
+              <Text className="px-2 font-t3-medium text-foreground-muted">
+                {gt("My repositories")}
+              </Text>
+              {ownRepositories.isPending || repositoryQuery !== debouncedRepositoryQuery ? (
+                <Text className="px-2 text-foreground-muted">{gt("Loading repositories…")}</Text>
+              ) : ownRepositories.error ? (
+                <Text className="px-2 text-foreground-muted">
+                  {gt("Could not list your repositories. Enter a repository path to look it up.")}
+                </Text>
+              ) : ownRepositories.data?.repositories.length === 0 ? (
+                <Text className="px-2 text-foreground-muted">
+                  {gt("No matching repositories. Enter a repository path to look it up.")}
+                </Text>
+              ) : (
+                <View className="overflow-hidden rounded-2xl">
+                  {ownRepositories.data?.repositories.map((repository, index) => (
+                    <ListRow
+                      key={repository.nameWithOwner}
+                      title={repository.nameWithOwner}
+                      subtitle={repository.defaultBranch}
+                      icon={
+                        <SourceControlIcon
+                          icon={sourceControlClients.get(repository.provider).icon}
+                        />
+                      }
+                      isFirst={index === 0}
+                      disabled={isSubmitting}
+                      onPress={() => openRepositoryDestination(repository)}
+                    />
+                  ))}
+                </View>
+              )}
+              <View className="flex-row gap-2">
+                {repositoryPage > 1 ? (
+                  <Button
+                    label={gt("Previous page")}
+                    onPress={() => setRepositoryPage(repositoryPage - 1)}
+                  />
+                ) : null}
+                {ownRepositories.data?.nextPage ? (
+                  <Button
+                    label={gt("Next page")}
+                    onPress={() => setRepositoryPage(repositoryPage + 1)}
+                  />
+                ) : null}
+              </View>
+            </View>
+          ) : null}
         </>
       ) : (
         <EmptyEnvironmentState />

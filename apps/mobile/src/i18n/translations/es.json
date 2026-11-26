@@ -5702,5 +5702,10 @@
   "99451a5d2d40440f": "Retirada por {by}.",
   "3ee30a50b70fffab": "Retirada por {by}: {reason}",
   "201490988858b511": "retirada por {by}",
-  "46d614fa7b4bf1e5": "Ejecuciones de flujos de trabajo"
+  "46d614fa7b4bf1e5": "Ejecuciones de flujos de trabajo",
+  "96ad66f94fb246b7": "Página anterior",
+  "269ee22d7bdcdddb": "Página siguiente",
+  "de5ba81087d5b6b2": "Mis repositorios",
+  "9aa6a2199297fc9e": "No se pudieron cargar tus repositorios. Escribe la ruta de un repositorio para buscarlo.",
+  "5fda971643d88d97": "No hay repositorios que coincidan. Escribe la ruta de un repositorio para buscarlo."
 }

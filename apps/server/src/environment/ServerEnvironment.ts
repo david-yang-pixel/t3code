@@ -5,6 +5,7 @@ import {
   type ExecutionEnvironmentDescriptor,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { resolveHostedWorkspaceImage } from "../workspace/HostedWorkspace.ts";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
@@ -189,6 +190,8 @@ export const make = Effect.gen(function* () {
   const secrets = yield* ServerSecretStore.ServerSecretStore;
   const identity = yield* ServerEnvironmentIdentity;
   const hostPlatform = yield* HostProcess.Platform;
+  const hostedWorkspaces =
+    resolveHostedWorkspaceImage(hostPlatform, yield* HostProcess.Environment) !== null;
   const hostArchitecture = yield* HostProcess.Architecture;
   const hostLibc = hostPlatform === "linux" ? yield* HostProcess.LinuxLibc : undefined;
   const environmentId = yield* identity.getEnvironmentId;
@@ -221,6 +224,8 @@ export const make = Effect.gen(function* () {
     ...(databaseMigration === undefined ? {} : { databaseMigration }),
     capabilities: {
       repositoryIdentity: true,
+      sourceControlOwnRepositories: true,
+      ...(hostedWorkspaces ? { hostedWorkspaces } : {}),
       connectionProbe: true,
       attachmentUploads: true,
       accessTokenRenewal: true,

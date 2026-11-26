@@ -92,6 +92,12 @@ Manage pairing links and active client sessions in **Settings → Sharing & acce
 - **Deregister from T3 Connect**: Open your account menu → **T3 Connect → Deregister** (or `t3 connect unlink` / `t3 connect logout` on CLI hosts). Idle tunnels are automatically cleaned up after 5–10 minutes offline and recreated on reconnect (hosts on older versions offline for 7+ days need an update first).
 - Treat pairing URLs and codes as passwords—never paste them into logs or screenshots.
 
+## Hosted Docker workspaces
+
+On a Linux host with Docker access, `t3 hosted-workspace create owner/repo --branch main` clones a public GitHub repository into a fresh container and data volume. `t3 hosted-workspace run <id> -- <command>` runs a command from its checkout. Use `stop` and `start` to keep the files through a pause. `delete` removes the container and its volume, including uncommitted changes.
+
+Set `T3CODE_HOSTED_WORKSPACE_IMAGE=node:24-bookworm` in the host's [service environment](./background-service.md#configure-the-service-environment) to enable these workspace operations over an authenticated T3 Code connection with terminal access. A custom image must provide Git, `/usr/bin/sleep`, and a writable `/home/node` for UID and GID 1000.
+
 ## Desktop app as a remote only
 
 Switch off **Settings → Environments → Local environment** in the desktop app to run with no local server, WSL backend, or incoming connections while continuing to drive remote hosts (if a local background service uses the same T3 home, **Open in** still works locally).

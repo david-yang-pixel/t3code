@@ -14,6 +14,7 @@ import * as RequestResolver from "effect/RequestResolver";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import {
+  GitRefName,
   SourceControlProviderError,
   TrimmedNonEmptyString,
   type ChangeRequest,
@@ -426,6 +427,18 @@ const RawRepositorySchema = Schema.Struct({
 });
 const decodeRawRepository = decodeJsonResult(RawRepositorySchema);
 
+const OwnRepositorySchema = Schema.Struct({
+  ...RawRepositorySchema.fields,
+  default_branch: Schema.NullOr(GitRefName),
+  private: Schema.Boolean,
+  fork: Schema.Boolean,
+});
+const decodeOwnRepositories = decodeJsonResult(Schema.Array(OwnRepositorySchema));
+const decodeOwnRepositorySearch = decodeJsonResult(
+  Schema.Struct({ items: Schema.Array(OwnRepositorySchema) }),
+);
+const GITHUB_REPOSITORY_PAGE_SIZE = 50;
+
 function repositoryCloneUrls(
   raw: Schema.Schema.Type<typeof RawRepositorySchema>,
 ): SourceControlRepositoryCloneUrls {
@@ -803,6 +816,51 @@ export const make = Effect.gen(function* () {
     return decoded.success.login;
   });
 
+  const readOwnRepositories = Effect.fn("GitHubSourceControlProvider.readOwnRepositories")(
+    function* (input: { readonly page: number; readonly query: string }) {
+      const host = environment.GH_HOST?.trim().toLowerCase() || "github.com";
+      const query = input.query.trim();
+      const terms = query.match(/[a-z0-9_.-]+/gi) ?? [];
+      if (query && terms.length === 0) return { repositories: [], nextPage: null };
+
+      const params = new URLSearchParams({
+        per_page: String(GITHUB_REPOSITORY_PAGE_SIZE),
+        page: String(input.page),
+      });
+      if (terms.length > 0) {
+        const viewer = yield* readViewerLogin(host);
+        params.set("q", `"${terms.join(" ")}" in:name user:${viewer} fork:true`);
+      } else {
+        params.set("affiliation", "owner");
+        params.set("sort", "pushed");
+        params.set("direction", "desc");
+      }
+      const response = yield* rest({
+        host,
+        operation: "listOwnRepositories",
+        path: `${terms.length > 0 ? "search/repositories" : "user/repos"}?${params}`,
+        allowReserve: true,
+      });
+      const decoded =
+        terms.length > 0
+          ? Result.map(decodeOwnRepositorySearch(response.body), (result) => result.items)
+          : decodeOwnRepositories(response.body);
+      if (Result.isFailure(decoded)) {
+        return yield* failure("GitHub returned an invalid repository list.", decoded.failure);
+      }
+      return {
+        repositories: decoded.success.map((repository) => ({
+          ...repositoryCloneUrls(repository),
+          provider: SourceControlProviderKind.make("github"),
+          defaultBranch: repository.default_branch,
+          private: repository.private,
+          fork: repository.fork,
+        })),
+        nextPage: /\brel="next"/.test(response.headers.link ?? "") ? input.page + 1 : null,
+      };
+    },
+  );
+
   // Keep paths, argv and stderr in cause; expose only a fixed checkout error to clients.
   const gitFailure = (cause: unknown) =>
     failure("The pull request could not be checked out with git.", cause);
@@ -1013,6 +1071,11 @@ export const make = Effect.gen(function* () {
 
   return SourceControlProvider.SourceControlProvider.of({
     kind: SourceControlProviderKind.make("github"),
+    listOwnRepositories: Effect.fn("GitHubSourceControlProvider.listOwnRepositories")(
+      (input) => readOwnRepositories(input),
+      (effect, input) =>
+        effect.pipe(Effect.mapError(providerError("listOwnRepositories", input.cwd))),
+    ),
     refineRepositoryIdentity,
     resolveRemoteWebHost: Effect.fn("GitHubSourceControlProvider.resolveRemoteWebHost")(
       ({ context }) => Effect.succeed(gitHubApiHostForRemote(context.remoteUrl)),

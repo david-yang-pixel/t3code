@@ -150,6 +150,7 @@ import * as NpmRelease from "./cloud/npmRelease.ts";
 import * as SessionStore from "./auth/SessionStore.ts";
 import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
+import * as HostedWorkspace from "./workspace/HostedWorkspace.ts";
 import * as SourceControlSignIn from "./sourceControl/SourceControlSignIn.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
 import * as DatabaseStorage from "./persistence/DatabaseStorage.ts";
@@ -918,6 +919,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
   Layer.mock(WorkspaceEntries.WorkspaceEntries)({}),
   Layer.mock(WorkspaceFolders.WorkspaceFolders)({}),
+  Layer.mock(HostedWorkspace.HostedWorkspace)({}),
   Layer.mock(TaskFolders.TaskFolders)({}),
   Layer.mock(LayoutCommandApprovalWrites.LayoutCommandApprovalWrites)({}),
   Layer.mock(WorkspaceFileSystem.WorkspaceFileSystem)({}),
