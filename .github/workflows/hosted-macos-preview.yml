@@ -67,7 +67,7 @@ jobs:
           fi
           hdiutil verify "${dmg[0]}"
           mountpoint=$(mktemp -d)
-          trap 'hdiutil detach "$mountpoint" -quiet || true; rmdir "$mountpoint"' EXIT
+          trap 'hdiutil detach "$mountpoint" -force -quiet || true' EXIT
           hdiutil attach "${dmg[0]}" -readonly -nobrowse -mountpoint "$mountpoint" -quiet
           contents="$mountpoint/Yang Workspace (Beta).app/Contents"
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$contents/Info.plist")" = com.davidyang.workspace
@@ -77,7 +77,7 @@ jobs:
           test "$(lipo -archs "$contents/MacOS/$executable")" = "$expected_arch"
           test ! -e "$contents/Resources/app-update.yml"
           ELECTRON_RUN_AS_NODE=1 "$contents/MacOS/$executable" "$contents/Resources/app.asar/apps/server/dist/bin.mjs" --version
-          node scripts/smoke-desktop-app.ts --executable "$contents/MacOS/$executable" \
+          node scripts/smoke-desktop-app.ts --renderer-cdp --executable "$contents/MacOS/$executable" \
             --artifacts-dir "$RUNNER_TEMP/desktop-launch-check"
 
       - name: Upload launch diagnostics
