@@ -1,0 +1,118 @@
+name: Build T3 Code Beta for private testing
+
+on:
+  push:
+    branches: [build-private-t3-beta-pr1]
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    if: github.repository == 'david-yang-pixel/t3code'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.draft.outputs.tag }}
+    steps:
+      - name: Create an unpublished download page
+        id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="local-t3-beta-pr1-${GITHUB_SHA:0:12}"
+          cat > notes.md <<'NOTES'
+          自用构建，基于此 fork 的 PR #1。安装后的应用名为 `T3 Code (Beta)`，可替换「应用程序」里的同名应用。
+
+          - Apple Silicon Mac 下载 `arm64.dmg`。Intel Mac 下载 `x64.dmg`。
+          - 首次替换前，请退出旧应用并备份原来的 `~/.t3` 数据。这份构建使用相同的数据目录。
+          - 该构建没有 Apple Developer ID 签名或公证，请保留为未发布草稿供自用。
+          NOTES
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --draft --prerelease --title 'T3 Code (Beta) · PR #1 自用构建' --notes-file notes.md
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            arch: arm64
+            rust-target: aarch64-apple-darwin
+          - runner: macos-26-intel
+            arch: x64
+            rust-target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    env:
+      T3CODE_TELEMETRY_CHANNEL: dev
+      DESKTOP_ARCH: ${{ matrix.arch }}
+    steps:
+      - name: Check out the build commit
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          git init .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git checkout --detach FETCH_HEAD
+
+      - name: Set up workspace dependencies
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=@t3tools/desktop... --filter=@t3tools/web... --filter=t3... --filter=@t3tools/scripts...
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          targets: ${{ matrix.rust-target }}
+
+      - name: Build T3 Code (Beta)
+        run: |
+          base_version=$(node -p "require('./apps/desktop/package.json').version")
+          node scripts/build-desktop-artifact.ts --platform mac --target dmg --arch "$DESKTOP_ARCH" \
+            --build-version "$base_version-pr.1.5" --output-dir release
+
+      - name: Verify the installed name and start the app
+        id: verify
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dmg=(release/T3-Code-*-$DESKTOP_ARCH.dmg)
+          test "${#dmg[@]}" = 1
+          hdiutil verify "${dmg[0]}"
+          mountpoint=$(mktemp -d)
+          trap 'hdiutil detach "$mountpoint" -force -quiet || true' EXIT
+          hdiutil attach "${dmg[0]}" -readonly -nobrowse -mountpoint "$mountpoint" -quiet
+          contents="$mountpoint/T3 Code (Beta).app/Contents"
+          test -f "$contents/Info.plist"
+          executable=$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$contents/Info.plist")
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$contents/Info.plist")" = com.t3tools.t3code
+          expected_arch=$DESKTOP_ARCH
+          if [[ $expected_arch == x64 ]]; then expected_arch=x86_64; fi
+          test "$(lipo -archs "$contents/MacOS/$executable")" = "$expected_arch"
+          test ! -e "$contents/Resources/app-update.yml"
+          node scripts/smoke-desktop-app.ts --renderer-cdp --executable "$contents/MacOS/$executable" \
+            --artifacts-dir "$RUNNER_TEMP/desktop-launch-check"
+          echo "dmg=${dmg[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the DMG to the unpublished draft
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          DMG: ${{ steps.verify.outputs.dmg }}
+        run: |
+          set -euo pipefail
+          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
+          archive=${DMG#release/}
+          shasum -a 256 "$archive" > "$archive.sha256"
+          gh release upload "$RELEASE_TAG" "$archive" "$archive.sha256" --repo "$GITHUB_REPOSITORY"
