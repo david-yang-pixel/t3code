@@ -3,7 +3,7 @@ import type {
   DesktopSshEnvironmentBootstrap,
   DesktopSshEnvironmentTarget,
 } from "@t3tools/contracts";
-import { CLI_RELEASE_BASE_URL_ENV } from "@t3tools/shared/cliRelease";
+import { CLI_RELEASE_BASE_URL_ENV, DESKTOP_SSH_RUNTIME_RESOURCE } from "@t3tools/shared/cliRelease";
 import * as NetService from "@t3tools/shared/Net";
 import * as SshAuth from "@t3tools/ssh/auth";
 import { resolveSshTarget } from "@t3tools/ssh/command";
@@ -94,6 +94,14 @@ export const resolveDesktopSshCliRunner = (
   return {
     archiveVersion: environment.appVersion,
     ...(releaseBaseUrl === undefined ? {} : { releaseBaseUrl }),
+    ...(environment.isPackaged && releaseBaseUrl === undefined
+      ? {
+          bundledArchiveDirectory: environment.path.join(
+            environment.resourcesPath,
+            DESKTOP_SSH_RUNTIME_RESOURCE,
+          ),
+        }
+      : {}),
   };
 };
 

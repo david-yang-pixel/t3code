@@ -7,6 +7,9 @@ on:
 permissions:
   contents: read
 
+env:
+  T3CODE_BUILD_VERSION: 0.1.12-pr.1.6
+
 jobs:
   prepare:
     if: github.repository == 'david-yang-pixel/t3code'
@@ -29,13 +32,81 @@ jobs:
           - Apple Silicon Mac 下载 `arm64.dmg`。Intel Mac 下载 `x64.dmg`。
           - 首次替换前，请退出旧应用并备份原来的 `~/.t3` 数据。这份构建使用相同的数据目录。
           - 该构建没有 Apple Developer ID 签名或公证，请保留为未发布草稿供自用。
+          - 已内置匹配的 Linux SSH 服务器包，支持 x64 和 arm64。
           NOTES
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --draft --prerelease --title 'T3 Code (Beta) · PR #1 自用构建' --notes-file notes.md
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-  build:
+  linux-ssh-runtime:
     needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    permissions:
+      contents: write
+    env:
+      T3CODE_TELEMETRY_CHANNEL: dev
+      RUNTIME_ARCH: ${{ matrix.arch }}
+    steps:
+      - name: Check out the build commit
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          git init .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git checkout --detach FETCH_HEAD
+
+      - name: Set up workspace dependencies
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=@t3tools/web... --filter=t3... --filter=@t3tools/scripts...
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+
+      - name: Build and verify the Linux SSH runtime
+        run: |
+          set -euo pipefail
+          command -v patchelf || { sudo apt-get update && sudo apt-get install -y patchelf; }
+          node scripts/update-release-package-versions.ts "$T3CODE_BUILD_VERSION"
+          vp run --filter t3 build
+          node apps/server/scripts/cli.ts build-exe
+          cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml \
+            --target-dir "$RUNNER_TEMP/resource-monitor-target"
+          mkdir -p "$RUNNER_TEMP/resource-monitor"
+          cp "$RUNNER_TEMP/resource-monitor-target/release/t3-resource-monitor" "$RUNNER_TEMP/resource-monitor/"
+          node scripts/build-cli-archive.ts --platform linux --arch "$RUNTIME_ARCH" \
+            --version "$T3CODE_BUILD_VERSION" --resource-monitor-dir "$RUNNER_TEMP/resource-monitor" \
+            --output-dir release-cli
+          node scripts/smoke-cli-archive.ts --archive release-cli/t3-*.tar.gz \
+            --expect-version "$T3CODE_BUILD_VERSION"
+
+      - name: Keep the runtime in the unpublished draft
+        working-directory: release-cli
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
+          archive="t3-$T3CODE_BUILD_VERSION-linux-$RUNTIME_ARCH.tar.gz"
+          sha256sum "$archive" > "$archive.sha256"
+          gh release upload "$RELEASE_TAG" "$archive" "$archive.sha256" --repo "$GITHUB_REPOSITORY"
+
+  build:
+    needs: [prepare, linux-ssh-runtime]
     strategy:
       fail-fast: false
       matrix:
@@ -75,11 +146,25 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.rust-target }}
 
+      - name: Embed both verified Linux SSH runtimes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          runtime_dir=apps/desktop/resources/ssh-runtime
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "t3-$T3CODE_BUILD_VERSION-linux-*.tar.gz*" --dir "$runtime_dir"
+          cd "$runtime_dir"
+          cat "t3-$T3CODE_BUILD_VERSION-linux-x64.tar.gz.sha256" \
+            "t3-$T3CODE_BUILD_VERSION-linux-arm64.tar.gz.sha256" > SHA256SUMS
+          shasum -a 256 -c SHA256SUMS
+          rm -- *.sha256
+
       - name: Build T3 Code (Beta)
         run: |
-          base_version=$(node -p "require('./apps/desktop/package.json').version")
           node scripts/build-desktop-artifact.ts --platform mac --target dmg --arch "$DESKTOP_ARCH" \
-            --build-version "$base_version-pr.1.5" --output-dir release
+            --build-version "$T3CODE_BUILD_VERSION" --output-dir release
 
       - name: Verify the installed name and start the app
         id: verify
@@ -100,6 +185,7 @@ jobs:
           if [[ $expected_arch == x64 ]]; then expected_arch=x86_64; fi
           test "$(lipo -archs "$contents/MacOS/$executable")" = "$expected_arch"
           test ! -e "$contents/Resources/app-update.yml"
+          (cd "$contents/Resources/ssh-runtime" && shasum -a 256 -c SHA256SUMS)
           node scripts/smoke-desktop-app.ts --renderer-cdp --executable "$contents/MacOS/$executable" \
             --artifacts-dir "$RUNNER_TEMP/desktop-launch-check"
           echo "dmg=${dmg[0]}" >> "$GITHUB_OUTPUT"

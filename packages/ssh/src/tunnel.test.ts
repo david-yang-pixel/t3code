@@ -390,6 +390,51 @@ describe("ssh tunnel scripts", () => {
     },
   );
 
+  it("installs a verified bundled archive without downloading it", () => {
+    const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-ssh-bundled-"));
+    try {
+      const bin = NodePath.join(root, "bin");
+      const payload = NodePath.join(root, "payload");
+      NodeFS.mkdirSync(bin);
+      NodeFS.mkdirSync(payload);
+      NodeFS.writeFileSync(
+        NodePath.join(bin, "uname"),
+        '#!/bin/sh\ncase "$1" in -s) echo Linux ;; -m) echo x86_64 ;; esac\n',
+        { mode: 0o755 },
+      );
+      NodeFS.writeFileSync(NodePath.join(bin, "curl"), "#!/bin/sh\nexit 99\n", { mode: 0o755 });
+      const expected = `t3 v${ARCHIVE.archiveVersion}`;
+      NodeFS.writeFileSync(NodePath.join(payload, "t3"), `#!/bin/sh\necho '${expected}'\n`, {
+        mode: 0o755,
+      });
+      const bytes = NodeChildProcess.execFileSync("tar", ["-czf", "-", "payload"], { cwd: root });
+      const hash = NodeChildProcess.execFileSync(
+        "sh",
+        ["-c", "if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi"],
+        { encoding: "utf8", input: bytes },
+      ).split(" ")[0]!;
+      const run = (script: string, input?: Buffer) =>
+        NodeChildProcess.spawnSync("sh", ["-c", script, "sh", "--version"], {
+          encoding: "utf8",
+          input,
+          env: { HOME: root, PATH: `${bin}:/usr/bin:/bin` },
+        });
+
+      const corrupt = run(SshTunnel.buildRemoteT3RunnerScript(ARCHIVE, "0".repeat(64)), bytes);
+      assert.notEqual(corrupt.status, 0);
+      assert.include(corrupt.stderr, "Checksum mismatch");
+
+      const installed = run(SshTunnel.buildRemoteT3RunnerScript(ARCHIVE, hash), bytes);
+      assert.equal(installed.status, 0, installed.stderr);
+      assert.equal(installed.stdout.trim(), expected);
+      const reused = run(SshTunnel.buildRemoteT3RunnerScript(ARCHIVE));
+      assert.equal(reused.status, 0, reused.stderr);
+      assert.equal(reused.stdout.trim(), expected);
+    } finally {
+      NodeFS.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   // sha256sum and shasum escape a newline in a file name they print, so the home path has one.
   const checksumTools =
     NodeChildProcess.spawnSync("sh", ["-c", 'command -v "$1"', "sh", "shasum"]).status === 0
@@ -1775,8 +1820,10 @@ const canBind = (port) =>
 
   const isAlive = (pid: number) => {
     try {
-      process.kill(pid, 0);
-      return true;
+      const status = NodeChildProcess.execFileSync("ps", ["-o", "stat=", "-p", String(pid)], {
+        encoding: "utf8",
+      }).trim();
+      return status !== "" && !status.startsWith("Z");
     } catch {
       return false;
     }
