@@ -666,6 +666,57 @@ describe("GitHubSourceControlProvider writes", () => {
     }).pipe(Effect.provide(layer));
   });
 
+  it.effect("lists and searches the signed-in account's own repositories, including forks", () =>
+    Effect.gen(function* () {
+      const requests: URL[] = [];
+      const fork = {
+        full_name: "me/t3code",
+        html_url: "https://github.com/me/t3code",
+        ssh_url: "git@github.com:me/t3code.git",
+        default_branch: "main",
+        private: false,
+        fork: true,
+      };
+      const gh = yield* makeProvider({
+        rest: ({ path }) =>
+          Effect.sync(() => {
+            const url = new URL(path, "https://api.github.com/");
+            requests.push(url);
+            if (url.pathname === "/user") return restResponse({ login: "me" });
+            if (url.pathname === "/search/repositories") return restResponse({ items: [fork] });
+            return {
+              ...restResponse([fork]),
+              headers: { link: '<https://api.github.com/user/repos?page=2>; rel="next"' },
+            };
+          }),
+      });
+      const provider = SourceControlProviderKind.make("github");
+      const list = gh.listOwnRepositories!;
+      const first = yield* list({ cwd: "/repo", provider, page: 1, query: "" });
+      assert.equal(first.nextPage, 2);
+      assert.deepStrictEqual(first.repositories, [
+        {
+          provider,
+          nameWithOwner: "me/t3code",
+          url: "https://github.com/me/t3code",
+          sshUrl: "git@github.com:me/t3code.git",
+          defaultBranch: "main",
+          private: false,
+          fork: true,
+        },
+      ]);
+      assert.equal(requests[0]?.pathname, "/user/repos");
+      assert.equal(requests[0]?.searchParams.get("affiliation"), "owner");
+
+      const searched = yield* list({ cwd: "/repo", provider, page: 3, query: "t3code" });
+      assert.deepStrictEqual(searched.repositories, first.repositories);
+      assert.isNull(searched.nextPage);
+      assert.equal(requests[1]?.pathname, "/user");
+      assert.equal(requests[2]?.searchParams.get("q"), '"t3code" in:name user:me fork:true');
+      assert.equal(requests[2]?.searchParams.get("page"), "3");
+    }),
+  );
+
   it.effect("looks up a bare repository name under the signed-in account on that host", () => {
     const requests: Array<string> = [];
     return Effect.gen(function* () {

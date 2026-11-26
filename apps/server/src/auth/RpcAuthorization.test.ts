@@ -97,6 +97,15 @@ describe("RPC authorization scopes", () => {
     );
   });
 
+  it("protects hosted workspace operations and the personal repository list", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.workspaceHostedAction)).toBe(
+      AuthTerminalOperateScope,
+    );
+    expect(requiredScopeForRpcMethod(WS_METHODS.sourceControlListOwnRepositories)).toBe(
+      AuthSourceControlWriteScope,
+    );
+  });
+
   it("still lets readers load settings the way installed Swift clients ask", () => {
     expect(requiredScopeForRpcMethod("server.getSettings")).toBe(AuthOrchestrationReadScope);
   });

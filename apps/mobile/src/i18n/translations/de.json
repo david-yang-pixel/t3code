@@ -5708,5 +5708,10 @@
   "99451a5d2d40440f": "Zurückgezogen von {by}.",
   "3ee30a50b70fffab": "Zurückgezogen von {by}: {reason}",
   "201490988858b511": "zurückgezogen von {by}",
-  "46d614fa7b4bf1e5": "Workflow-Ausführungen"
+  "46d614fa7b4bf1e5": "Workflow-Ausführungen",
+  "96ad66f94fb246b7": "Vorherige Seite",
+  "269ee22d7bdcdddb": "Nächste Seite",
+  "de5ba81087d5b6b2": "Meine Repositorys",
+  "9aa6a2199297fc9e": "Deine Repositorys konnten nicht geladen werden. Gib einen Repository-Pfad ein, um danach zu suchen.",
+  "5fda971643d88d97": "Keine passenden Repositorys. Gib einen Repository-Pfad ein, um danach zu suchen."
 }

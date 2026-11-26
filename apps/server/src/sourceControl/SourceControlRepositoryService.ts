@@ -15,6 +15,8 @@ import {
   type SourceControlCloneRepositoryInput,
   type SourceControlCloneRepositoryResult,
   type SourceControlCloneProtocol,
+  type SourceControlListOwnRepositoriesInput,
+  type SourceControlOwnRepositoriesPage,
   SourceControlProviderKind,
   type SourceControlPublishRepositoryInput,
   type SourceControlPublishRepositoryResult,
@@ -47,6 +49,9 @@ export class SourceControlRepositoryService extends Context.Service<
     readonly lookupRepository: (
       input: SourceControlRepositoryLookupInput,
     ) => Effect.Effect<SourceControlRepositoryInfo, SourceControlRepositoryError>;
+    readonly listOwnRepositories: (
+      input: SourceControlListOwnRepositoriesInput,
+    ) => Effect.Effect<SourceControlOwnRepositoriesPage, SourceControlRepositoryError>;
     readonly prepareClone: (
       input: SourceControlCloneRepositoryInput,
     ) => Effect.Effect<SourceControlPreparedClone, SourceControlRepositoryError>;
@@ -240,6 +245,20 @@ export const make = Effect.gen(function* () {
     // Someone adding or cloning a repository is waiting, so a background rate-limit pause must not
     // refuse the lookup.
     Effect.provideService(SourceControlRateLimit.Interactive, true),
+  );
+
+  const listOwnRepositories = Effect.fn("SourceControlRepositoryService.listOwnRepositories")(
+    function* (input: SourceControlListOwnRepositoriesInput) {
+      const provider = yield* providers.get(input.provider);
+      if (!provider.listOwnRepositories) {
+        return yield* new SourceControlRepositoryError({
+          provider: input.provider,
+          operation: "listOwnRepositories",
+          detail: "This host does not support listing your repositories.",
+        });
+      }
+      return yield* provider.listOwnRepositories({ ...input, cwd: config.cwd });
+    },
   );
 
   const normalizeDestinationPath = Effect.fn("SourceControlRepositoryService.normalizeDestination")(
@@ -619,6 +638,11 @@ export const make = Effect.gen(function* () {
 
   // Forwarders retain the underlying operation spans.
   return SourceControlRepositoryService.of({
+    listOwnRepositories: Effect.fnUntraced(function* (input) {
+      return yield* listOwnRepositories(input).pipe(
+        mapRepositoryError("listOwnRepositories", input.provider),
+      );
+    }),
     lookupRepository: Effect.fnUntraced(function* (input) {
       return yield* lookupRepository(input).pipe(
         mapRepositoryError("lookupRepository", input.provider),

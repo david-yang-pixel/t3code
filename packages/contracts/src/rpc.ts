@@ -463,6 +463,11 @@ import {
 import { SecretRequestAnswerInput, SecretRequestError } from "./secretRequest.ts";
 import { AgentFeedbackAnswerInput, AgentFeedbackRequestError } from "./agentFeedback.ts";
 import {
+  HostedWorkspaceAction,
+  HostedWorkspaceResult,
+  HostedWorkspaceRpcError,
+} from "./hostedWorkspace.ts";
+import {
   ProjectCloneActionInput,
   ProjectCloneActionResult,
   ProjectCloneListEvent,
@@ -474,6 +479,8 @@ import {
   SourceControlCloneRepositoryInput,
   SourceControlCloneRepositoryResult,
   SourceControlDiscoveryResult,
+  SourceControlListOwnRepositoriesInput,
+  SourceControlOwnRepositoriesPage,
   SourceControlPublishRepositoryInput,
   SourceControlPublishRepositoryResult,
   SourceControlRepositoryError,
@@ -508,6 +515,7 @@ export const WS_METHODS = {
   workspaceListFolders: "workspace.listFolders",
   workspaceScanFolders: "workspace.scanFolders",
   workspaceTaskFolder: "workspace.taskFolder",
+  workspaceHostedAction: "workspace.hostedAction",
   workspaceAddTaskFolderRepository: "workspace.addTaskFolderRepository",
   workspaceLayoutCommands: "workspace.layoutCommands",
   workspaceApproveLayoutCommands: "workspace.approveLayoutCommands",
@@ -722,6 +730,7 @@ export const WS_METHODS = {
   issueTrackersBindProject: "issueTrackers.bindProject",
 
   sourceControlLookupRepository: "sourceControl.lookupRepository",
+  sourceControlListOwnRepositories: "sourceControl.listOwnRepositories",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
   sourceControlPublishRepository: "sourceControl.publishRepository",
   sourceControlSignInStart: "sourceControl.signInStart",
@@ -1560,6 +1569,15 @@ const WsSourceControlLookupRepositoryRpc = Rpc.make(WS_METHODS.sourceControlLook
   error: Schema.Union([SourceControlRepositoryError, EnvironmentAuthorizationError]),
 });
 
+const WsSourceControlListOwnRepositoriesRpc = Rpc.make(
+  WS_METHODS.sourceControlListOwnRepositories,
+  {
+    payload: SourceControlListOwnRepositoriesInput,
+    success: SourceControlOwnRepositoriesPage,
+    error: Schema.Union([SourceControlRepositoryError, EnvironmentAuthorizationError]),
+  },
+);
+
 const WsSourceControlCloneRepositoryRpc = Rpc.make(WS_METHODS.sourceControlCloneRepository, {
   payload: SourceControlCloneRepositoryInput,
   success: SourceControlCloneRepositoryResult,
@@ -1736,6 +1754,12 @@ const WsWorkspaceTaskFolderRpc = Rpc.make(WS_METHODS.workspaceTaskFolder, {
   payload: WorkspaceTaskFolderInput,
   success: WorkspaceTaskFolderResult,
   error: Schema.Union([TaskFolderError, EnvironmentAuthorizationError]),
+});
+
+const WsWorkspaceHostedActionRpc = Rpc.make(WS_METHODS.workspaceHostedAction, {
+  payload: HostedWorkspaceAction,
+  success: HostedWorkspaceResult,
+  error: Schema.Union([HostedWorkspaceRpcError, EnvironmentAuthorizationError]),
 });
 
 const WsWorkspaceAddTaskFolderRepositoryRpc = Rpc.make(
@@ -2638,6 +2662,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsLabelCandidatesRpc,
   WsPullRequestsSetLabelsRpc,
   WsSourceControlLookupRepositoryRpc,
+  WsSourceControlListOwnRepositoriesRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,
   WsSourceControlSignInStartRpc,
@@ -2665,6 +2690,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsWorkspaceListFoldersRpc,
   WsWorkspaceScanFoldersRpc,
   WsWorkspaceTaskFolderRpc,
+  WsWorkspaceHostedActionRpc,
   WsWorkspaceAddTaskFolderRepositoryRpc,
   WsWorkspaceLayoutCommandsRpc,
   WsWorkspaceApproveLayoutCommandsRpc,

@@ -36,6 +36,7 @@ import { turnItemDetailRevision } from "@t3tools/client-runtime/work-log/item-de
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useEffect, useMemo, useState } from "react";
+import { useDebouncedValue } from "../lib/useDebouncedValue";
 
 import { appAtomRegistry } from "./atom-registry";
 import { orchestrationEnvironment } from "./orchestration";
@@ -93,21 +94,7 @@ export interface ComposerPathSearchTarget {
   readonly query: string | null;
 }
 
-export function useDebouncedValue<A>(value: A, delayMs: number): A {
-  const [debounced, setDebounced] = useState(value);
-
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- timer that publishes the value after the delay and clears on change
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebounced(value);
-    }, delayMs);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [delayMs, value]);
-
-  return debounced;
-}
+export { useDebouncedValue } from "../lib/useDebouncedValue";
 
 export function useComposerPullRequestSearch(input: {
   environmentId: EnvironmentId | null;

@@ -13023,5 +13023,9 @@
       "v": "v"
     },
     " more in Linked items"
-  ]
+  ],
+  "de5ba81087d5b6b2": "My repositories",
+  "99e0f614982890b9": "Loading repositories…",
+  "9aa6a2199297fc9e": "Could not list your repositories. Enter a repository path to look it up.",
+  "5fda971643d88d97": "No matching repositories. Enter a repository path to look it up."
 }
