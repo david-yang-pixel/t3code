@@ -2,7 +2,7 @@ name: Hosted workspace macOS preview
 
 on:
   push:
-    branches: [hosted-macos-preview]
+    tags: [hosted-preview-macos-*]
 
 permissions:
   contents: read
@@ -52,15 +52,19 @@ jobs:
         run: |
           base_version=$(node -p "require('./apps/desktop/package.json').version")
           node scripts/build-desktop-artifact.ts --platform mac --target dmg --arch "$DESKTOP_ARCH" \
-            --version "$base_version-pr.1.$GITHUB_RUN_NUMBER" --output-dir release --verbose
+            --build-version "$base_version-pr.1.$GITHUB_RUN_NUMBER" --output-dir release --verbose
 
       - name: Verify the DMG and its packaged backend
         env:
           DESKTOP_ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
+          shopt -s nullglob
           dmg=(release/Yang-Workspace-*-$DESKTOP_ARCH.dmg)
-          test "${#dmg[@]}" = 1
+          if [[ ${#dmg[@]} != 1 ]]; then
+            echo "Expected one DMG for $DESKTOP_ARCH, found ${#dmg[@]}." >&2
+            exit 1
+          fi
           hdiutil verify "${dmg[0]}"
           mountpoint=$(mktemp -d)
           trap 'hdiutil detach "$mountpoint" -quiet || true; rmdir "$mountpoint"' EXIT
@@ -90,4 +94,48 @@ jobs:
           name: hosted-preview-macos-${{ matrix.arch }}
           path: release/Yang-Workspace-*-${{ matrix.arch }}.dmg
           if-no-files-found: error
+          compression-level: 0
           retention-days: 7
+
+  publish:
+    if: github.repository == 'david-yang-pixel/t3code'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download both verified DMGs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: hosted-preview-macos-*
+          path: release
+          merge-multiple: true
+
+      - name: Publish the fork's preview release
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          arm64=(Yang-Workspace-*-arm64.dmg)
+          x64=(Yang-Workspace-*-x64.dmg)
+          test "${#arm64[@]}" = 1
+          test "${#x64[@]}" = 1
+          sha256sum "${arm64[0]}" "${x64[0]}" > SHA256SUMS.txt
+
+          cat > NOTES.md <<'NOTES'
+          Yang Workspace 是基于 T3 Code 源码构建的非官方 macOS 预览版。
+
+          - Apple Silicon Mac 下载以 `arm64.dmg` 结尾的文件。Intel Mac 下载以 `x64.dmg` 结尾的文件。
+          - 应用使用独立的 `~/.yang-workspace` 数据目录，首次打开需要重新配置远程环境。这个版本没有 Apple Developer ID 签名或公证。
+          - 支持在已登录 GitHub 的环境中选择个人仓库，以及在 Linux 服务器上用 Docker 创建、暂停、恢复和删除托管工作区。容器目前支持克隆公开仓库。Mac 上的智能体自动连接到云端容器仍在开发。
+
+          [查看功能 PR](https://github.com/david-yang-pixel/t3code/pull/1)
+          NOTES
+          printf '\n[查看构建和验证记录](%s/%s/actions/runs/%s)\n' \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> NOTES.md
+
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --prerelease --title "Yang Workspace macOS Preview $GITHUB_RUN_NUMBER" \
+            --notes-file NOTES.md "${arm64[0]}" "${x64[0]}" SHA256SUMS.txt
